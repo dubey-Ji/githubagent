@@ -1,23 +1,48 @@
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
+from langchain_core.messages import HumanMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain.agents import create_agent
+import asyncio
+import os
 
 load_dotenv()
 
+GITHUB_PERSONAL_ACCESS_TOKEN = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
+
 llm = ChatOpenAI(model="gpt-4o", temperature=0.0)
 
-prompt = ChatPromptTemplate.from_template("You are a joker. Crack a joke on following {topic} using this style: {style}")
+client = MultiServerMCPClient(
+    {
+        "github": {
+            "transport": "stdio",
+            "command": "/Users/ashutoshdubey/Desktop/github-mcp-server/github-mcp-server",
+            "args": ["stdio"],
+            "env": {
+                "GITHUB_PERSONAL_ACCESS_TOKEN": GITHUB_PERSONAL_ACCESS_TOKEN
+            }
+      }
+    }
+)
 
-class JokeOutputParser(BaseModel):
-    topic: str = Field(description="Topic of a joke")
-    style: str = Field(description="Style of a joke")
-    joke: str = Field(description="Joke of topic following of given style")
+async def agent():
+    tools = await client.get_tools()
+
+    agent = create_agent(model=llm,tools=tools)
 
 
-llm_structure_parser = llm.with_structured_output(JokeOutputParser)
+    prompt = ChatPromptTemplate.from_template("Tell me the number of repositories in organization: Xemailverify")
 
-chain = prompt | llm_structure_parser
+    result = await agent.ainvoke({
+        "messages": [HumanMessage(content="What is the number of repositories in organization: Xemailverify")]
+    })
+    print(result)
 
-result = chain.invoke({"topic": "AI", "style": "Sarcasm poetry"})
-print(result)
+asyncio.run(agent())
+
+# Design
+# Orchestra Agent
+# Github Agent
+# MCP Client
+# Github MCP server
